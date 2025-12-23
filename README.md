@@ -2,6 +2,8 @@
 
 This is a reference implementation demonstrating how to use AWS AppSync for realtime messaging with Lambda authorization.
 
+![Demo](demo/[OK]subscribed-client-can-receive-messages-same-channel.png)
+
 ## Overview
 
 This application demonstrates:
