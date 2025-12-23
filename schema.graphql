@@ -1,0 +1,34 @@
+type Message {
+  id: ID!
+  content: String!
+  sender: String!
+  createdAt: AWSDateTime!
+  # Client-owner parameters
+  tenantID: Int
+  propertyID: Int
+  orderID: Int
+  # Owner parameters
+  shareId: String!
+  constructionID: String
+}
+
+type Query {
+  health: String
+}
+
+type Mutation {
+  publishMessage(
+    content: String!
+    sender: String!
+    tenantID: Int
+    propertyID: Int
+    orderID: Int
+    shareId: String
+    constructionID: String
+  ): Message
+}
+
+type Subscription {
+  onMessage(shareId: String!): Message
+    @aws_subscribe(mutations: ["publishMessage"])
+}

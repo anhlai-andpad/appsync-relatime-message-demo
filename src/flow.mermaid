@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant UI as React UI
+    participant Amplify as Amplify Client
+    participant AppSync as AWS AppSync
+    participant SubCon as WebSocket Connection
+
+    Note over UI: User sends message
+
+    UI->>Amplify: publish(name, data)
+    Amplify->>AppSync: GraphQL Mutation (HTTPS)
+    AppSync-->>Amplify: Mutation Result
+
+    Note over AppSync: Push real-time event<br>to all subscribers
+
+    AppSync-->>SubCon: Subscription Event (WebSocket)
+    SubCon-->>Amplify: deliver event
+    Amplify-->>UI: callback(next) → render received message
+
+    Note over UI: If senderId matches:<br>ignore to avoid double display
