@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders AppSync Message DEMO', () => {
+test('renders Demo Realtime Message with AWS AppSync', () => {
   render(<App />);
-  const heading = screen.getByText(/AppSync Message Tester/i);
+  const heading = screen.getByText(/Demo Realtime Message with AWS AppSync/i);
   expect(heading).toBeInTheDocument();
 });
