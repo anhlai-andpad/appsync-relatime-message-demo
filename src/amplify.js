@@ -1,10 +1,10 @@
 import { Amplify } from 'aws-amplify'
 
-const endpoint = process.env.REACT_APP_APPSYNC_ENDPOINT
+const endpoint = process.env.REACT_APP_OWNER_APPSYNC_ENDPOINT
 
 if (!endpoint) {
   throw new Error(
-    'REACT_APP_APPSYNC_ENDPOINT environment variable is required. ' +
+    'REACT_APP_OWNER_APPSYNC_ENDPOINT environment variable is required. ' +
     'Set it in .env file or export before starting the app.'
   )
 }
