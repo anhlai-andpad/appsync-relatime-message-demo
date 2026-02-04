@@ -102,7 +102,7 @@ export default function App() {
         height: '80vh',
       }}
     >
-      <h2 style={{ textAlign: 'center' }}>AppSync Message Tester</h2>
+      <h2 style={{ textAlign: 'center' }}>AppSync Message Demo</h2>
       <div style={{ textAlign: 'center', fontSize: 12, color: '#666', marginBottom: 8 }}>
         Environment: <strong>{process.env.REACT_APP_ENV ?? 'unknown'}</strong>
       </div>
