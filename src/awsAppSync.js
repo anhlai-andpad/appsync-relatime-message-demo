@@ -1,149 +1,144 @@
 import { generateClient } from 'aws-amplify/api'
+import { Amplify } from 'aws-amplify'
 
 /**
  * 🔑 IMPORTANT:
  * Lambda authorizer REQUIRES a token for BOTH:
  * - HTTP (mutations)
  * - WebSocket (subscriptions)
- *
- * This token becomes `authorizationToken` in Lambda
  */
 function getAuthToken() {
-  // TEMP: hardcoded for testing
-  // Replace with real token (JWT, session, etc.)
-  return process.env.REACT_APP_AUTH_TOKEN || 'aaaa'
+  return 'Bearer ' + process.env.REACT_APP_AUTH_TOKEN
 }
 
-const client = generateClient({
-  authMode: 'custom',
-  authToken: getAuthToken(),
-})
-
 /**
- * Mutation: publishMessage
- * Supports two parameter sets:
- * 1. Client-owner: tenantID, propertyID, orderID (shareId is auto-generated)
- * 2. Owner: shareId, constructionID (optional)
+ * Get the AppSync endpoint for the given mode
+ * @param {string} mode - 'owner' or 'client-owner'
+ * @returns {string} AppSync GraphQL endpoint
  */
-export const publishDocOwner = /* GraphQL */ `
-  mutation PublishMessage($content: String!, $sender: String!, $shareId: String!, $constructionID: String) {
-    publishMessage(content: $content, sender: $sender, shareId: $shareId, constructionID: $constructionID) {
-      id
-      content
-      sender
-      shareId
-      createdAt
-      tenantID
-      propertyID
-      orderID
-      constructionID
-    }
+function getEndpointForMode(mode) {
+  if (mode === 'client-owner') {
+    return process.env.REACT_APP_CLIENT_OWNER_APPSYNC_ENDPOINT || process.env.REACT_APP_OWNER_APPSYNC_ENDPOINT
   }
-`
-
-export const publishDocOwnerSimple = /* GraphQL */ `
-  mutation PublishMessage($content: String!, $sender: String!, $shareId: String!) {
-    publishMessage(content: $content, sender: $sender, shareId: $shareId) {
-      id
-      content
-      sender
-      shareId
-      createdAt
-      tenantID
-      propertyID
-      orderID
-      constructionID
-    }
-  }
-`
-
-export const publishDocClientOwner = /* GraphQL */ `
-  mutation PublishMessage($content: String!, $sender: String!, $tenantID: Int!, $propertyID: Int!, $orderID: Int!) {
-    publishMessage(content: $content, sender: $sender, tenantID: $tenantID, propertyID: $propertyID, orderID: $orderID) {
-      id
-      content
-      sender
-      shareId
-      createdAt
-      tenantID
-      propertyID
-      orderID
-      constructionID
-    }
-  }
-`
+  return process.env.REACT_APP_OWNER_APPSYNC_ENDPOINT
+}
 
 /**
- * Subscription: onMessage(shareId: String!): Message
+ * Get or create a client for the given mode
+ */
+const clientCache = {}
+
+function getClient(mode = 'owner') {
+  if (!clientCache[mode]) {
+    const endpoint = getEndpointForMode(mode)
+    if (!endpoint) {
+      throw new Error(
+        `AppSync endpoint not configured for mode: ${mode}. ` +
+        `Set REACT_APP_${mode === 'client-owner' ? 'CLIENT_OWNER' : 'OWNER'}_APPSYNC_ENDPOINT in .env file.`
+      )
+    }
+
+    Amplify.configure({
+      API: {
+        GraphQL: {
+          endpoint,
+          region: process.env.REACT_APP_AWS_REGION || 'ap-northeast-1',
+          defaultAuthMode: 'lambda',
+        },
+      },
+    })
+
+    clientCache[mode] = generateClient({
+      authMode: 'custom',
+      authToken: getAuthToken(),
+    })
+
+    console.log(`📡 Created AppSync client for ${mode} mode`, { endpoint })
+  }
+
+  return clientCache[mode]
+}
+
+/**
+ * Subscription: onMessage(shareID: String!, constructionID: String): Message
+ * For owner mode
  */
 export const subscribeDoc = /* GraphQL */ `
-  subscription OnMessage($shareId: String!) {
-    onMessage(shareId: $shareId) {
+  subscription OnMessage($shareID: String!, $constructionID: String) {
+    onMessage(shareID: $shareID, constructionID: $constructionID) {
       id
-      content
-      sender
-      shareId
-      createdAt
-      tenantID
-      propertyID
-      orderID
+      body
+      eventSource
+      shareID
       constructionID
     }
   }
 `
 
 /**
- * Publish a message using owner parameters (shareId, constructionID optional)
- * @param {string} content - Message content
- * @param {string} sender - Sender identifier
- * @param {string} shareId - Share/room identifier
- * @param {string} [constructionID] - Optional construction ID
- * @returns {Promise<Message>}
+ * Subscription: onMessage(tenantID: Int!, propertyID: Int!, orderID: Int!): Message
+ * For client-owner mode
  */
-export async function publishOwner(content, sender, shareId, constructionID) {
-  const variables = constructionID
-    ? { content, sender, shareId, constructionID }
-    : { content, sender, shareId }
-
-  return client.graphql({
-    query: constructionID ? publishDocOwner : publishDocOwnerSimple,
-    variables,
-    authMode: 'lambda',
-    authToken: getAuthToken(),
-  })
-}
+export const subscribeDocClientOwner = /* GraphQL */ `
+  subscription OnMessage($tenantID: Int!, $propertyID: Int!, $orderID: Int!) {
+    onMessage(tenantID: $tenantID, propertyID: $propertyID, orderID: $orderID) {
+      id
+      body
+      eventSource
+      tenantID
+      propertyID
+      orderID
+    }
+  }
+`
 
 /**
- * Publish a message using client-owner parameters (tenantID, propertyID, orderID)
- * shareId will be auto-generated as `${tenantID}:${propertyID}:${orderID}`
- * @param {string} content - Message content
- * @param {string} sender - Sender identifier
- * @param {number} tenantID - Tenant ID
- * @param {number} propertyID - Property ID
- * @param {number} orderID - Order ID
- * @returns {Promise<Message>}
- */
-export async function publishClientOwner(content, sender, tenantID, propertyID, orderID) {
-  return client.graphql({
-    query: publishDocClientOwner,
-    variables: { content, sender, tenantID, propertyID, orderID },
-    authMode: 'lambda',
-    authToken: getAuthToken(),
-  })
-}
-
-/**
- * Subscribe to messages for a shareId
- * @param {string} shareId - Share/room identifier
+ * Subscribe to messages
+ * 
+ * This subscription will receive messages from:
+ * 1. Frontend mutations (when publishMessage is called)
+ * 2. Backend Subscriber (when messages are created via API and forwarded to AppSync)
+ * 
+ * For owner mode: subscription filter is based on shareID and constructionID
+ * For client-owner mode: subscription filter is based on tenantID, propertyID, orderID
+ * 
+ * @param {string|number} shareIDOrTenantID - Share/room identifier (owner mode) or tenantID (client-owner mode)
  * @param {(message: Message) => void} next - Callback when message received
- * @param {(err: any) => void} error - Optional error callback
+ * @param {(err: any) => void} [error] - Optional error callback
+ * @param {string|number} [constructionIDOrPropertyID] - constructionID (owner mode) or propertyID (client-owner mode)
+ * @param {string} [mode] - Mode ('owner' or 'client-owner'), defaults to 'owner'
+ * @param {number} [orderID] - Order ID (client-owner mode only)
  * @returns {Subscription} Subscription object with unsubscribe method
  */
-export function subscribe(shareId, next, error) {
+export function subscribe(shareIDOrTenantID, next, error = null, constructionIDOrPropertyID = null, mode = 'owner', orderID = null) {
+  const client = getClient(mode)
+  
+  let query, variables
+
+  if (mode === 'client-owner') {
+    // Client-owner mode: use tenantID, propertyID, orderID
+    if (typeof shareIDOrTenantID !== 'number' || typeof constructionIDOrPropertyID !== 'number' || typeof orderID !== 'number') {
+      throw new Error('For client-owner mode, shareIDOrTenantID, constructionIDOrPropertyID, and orderID must be numbers')
+    }
+    query = subscribeDocClientOwner
+    variables = {
+      tenantID: shareIDOrTenantID,
+      propertyID: constructionIDOrPropertyID,
+      orderID: orderID,
+    }
+  } else {
+    // Owner mode: use shareID and optional constructionID
+    query = subscribeDoc
+    variables = {
+      shareID: shareIDOrTenantID,
+      ...(constructionIDOrPropertyID && { constructionID: constructionIDOrPropertyID }),
+    }
+  }
+
   const sub = client
     .graphql({
-      query: subscribeDoc,
-      variables: { shareId },
+      query,
+      variables,
       authMode: 'lambda',
       authToken: getAuthToken(),
     })
