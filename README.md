@@ -27,7 +27,7 @@ This application:
        │                 ┌──────▼──────┐
        │                 │   Lambda    │
        │                 │ Authorizer  │
-       │                 └──────────────┘
+       │                 └─────────────┘
        │
        │  Messages published by backend Subscriber
        │  (API → Subscriber → AppSync → this client)
