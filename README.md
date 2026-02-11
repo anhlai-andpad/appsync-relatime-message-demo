@@ -1,196 +1,132 @@
 # AppSync Realtime Messages Test Application
 
-This is a reference implementation demonstrating how to use AWS AppSync for realtime messaging with Lambda authorization.
+This is a reference implementation for **subscribing** to AWS AppSync realtime messages with Lambda authorization.
 
 ![Demo](demo/[OK]subscribed-client-can-receive-messages-same-channel.png)
 
 ## Overview
 
-This application demonstrates:
+This application:
 
-- **Mutations**: Publishing messages via GraphQL mutations
-- **Subscriptions**: Real-time message delivery via GraphQL subscriptions
-- **Lambda Authorization**: Using custom Lambda authorizer for authentication
-- **Two Parameter Sets**: Support for both "owner" and "client-owner" message types
+- **Subscriptions only**: Listens for messages delivered via GraphQL subscriptions. Messages are published by a backend **Subscriber** service (not by this UI).
+- **Two modes** with separate AppSync endpoints and auth:
+  - **Owner**: Subscribe by `shareID` and optional `constructionID`. Auth: Bearer token.
+  - **Client-owner**: Subscribe by `tenantID`, `propertyID`, `orderID`. Auth: Cookie.
+- **Lambda authorization**: Custom Lambda authorizer for both HTTP and WebSocket; owner uses Bearer token, client-owner uses Cookie.
 
 ## Architecture
 
 ```
 ┌─────────────┐         ┌─────────────┐
-│   Client    │────────▶│   AppSync   │
-│  (React)    │◀────────│   GraphQL   │
+│   Client    │◀────────│   AppSync   │
+│  (React)    │  sub    │   GraphQL   │
 └─────────────┘         └─────────────┘
-                              │
-                              │ Lambda Authorizer
-                              ▼
-                        ┌─────────────┐
-                        │   Lambda    │
-                        │ Authorizer  │
-                        └─────────────┘
+       │                        │
+       │                 Lambda Authorizer
+       │                        │
+       │                 ┌──────▼──────┐
+       │                 │   Lambda    │
+       │                 │ Authorizer  │
+       │                 └──────────────┘
+       │
+       │  Messages published by backend Subscriber
+       │  (API → Subscriber → AppSync → this client)
+       ▼
+  Message log (Subscriber messages highlighted)
 ```
-
-### GraphQL Schema
-
-```graphql
-type Message {
-  id: ID!
-  content: String!
-  sender: String!
-  shareId: String!
-  createdAt: AWSDateTime!
-  # Optional fields
-  tenantID: Int
-  propertyID: Int
-  orderID: Int
-  constructionID: String
-}
-
-type Mutation {
-  publishMessage(
-    content: String!
-    sender: String!
-    # Option 1: Owner parameters
-    shareId: String
-    constructionID: String
-    # Option 2: Client-owner parameters (all required together)
-    tenantID: Int
-    propertyID: Int
-    orderID: Int
-  ): Message
-}
-
-type Subscription {
-  onMessage(shareId: String!): Message
-    @aws_subscribe(mutations: ["publishMessage"])
-}
-```
-
-### How It Works
-
-1. **Mutation**: `publishMessage` accepts message content and sender, plus one of two parameter sets:
-
-   - **Owner mode**: Provide `shareId` (required) and optionally `constructionID`
-   - **Client-owner mode**: Provide `tenantID`, `propertyID`, `orderID` (all required). The resolver auto-generates `shareId` as `${tenantID}:${propertyID}:${orderID}`
-
-2. **Subscription**: `onMessage(shareId)` subscribes to messages for a specific `shareId`. AppSync automatically filters messages - only messages with matching `shareId` are delivered.
-
-3. **Authorization**: Both mutations and subscriptions require a Lambda authorization token passed in the `Authorization` header.
 
 ## Setup
 
 ### 1. Environment Variables
 
-Create a `.env` file in the root directory:
+Create a `.env` file (see `.env.example`):
 
 ```bash
-REACT_APP_APPSYNC_ENDPOINT=https://your-api-id.appsync-api.ap-northeast-1.amazonaws.com/graphql
+REACT_APP_ENV=dev
 REACT_APP_AWS_REGION=ap-northeast-1
-REACT_APP_AUTH_TOKEN=your-auth-token-here
+REACT_APP_OWNER_APPSYNC_ENDPOINT=https://your-owner-api-id.appsync-api.ap-northeast-1.amazonaws.com/graphql
+REACT_APP_CLIENT_OWNER_APPSYNC_ENDPOINT=https://your-client-owner-api-id.appsync-api.ap-northeast-1.amazonaws.com/graphql
+REACT_APP_AUTH_TOKEN=your-bearer-token-for-owner-mode
 ```
 
-### 2. Install Dependencies
+For **client-owner** mode you can optionally set:
+
+```bash
+# Optional: cookie string for client-owner. If unset, the app uses document.cookie in the browser.
+# When exporting from shell, use single quotes so $ in the cookie is not expanded:
+#   export REACT_APP_AUTH_COOKIE='name=value; __Secure-SID=...'
+REACT_APP_AUTH_COOKIE=
+```
+
+### 2. Install and Run
 
 ```bash
 npm install
-```
-
-### 3. Run the Application
-
-```bash
 npm start
-
-# cd to golang and run to publish message
-go run main.go
 ```
 
-The app will open at `http://localhost:3000`
+The app runs at `http://localhost:3000`.
 
 ## Usage
 
-### Owner Mode [Verified]
+### Owner Mode
 
-1. Select "Owner Mode"
-2. Enter a `shareId` (e.g., "room-1")
-3. Optionally enter a `constructionID`
-4. Type a message and click "Send"
-5. All clients subscribed to the same `shareId` will receive the message
+1. Select **Owner Mode**.
+2. Enter **shareId** and **constructionID** (optional). The UI shows: “Listening for messages published by the Subscriber on shareId / constructionID: …”.
+3. Subscribe; messages published by the backend Subscriber for that share/construction will appear in the log. Messages from the Subscriber are highlighted (yellow).
 
 ### Client-Owner Mode
 
-1. Select "Client-Owner Mode"
-2. Enter `tenantID`, `propertyID`, and `orderID`
-3. The `shareId` will be auto-generated as `${tenantID}:${propertyID}:${orderID}`
-4. Type a message and click "Send"
-5. All clients subscribed to the generated `shareId` will receive the message
+1. Select **Client-Owner Mode**.
+2. Enter **tenantID**, **propertyID**, and **orderID**. The UI shows: “Listening for messages published by the Subscriber on tenantID / propertyID / orderID: …”.
+3. Subscribe; messages for that tenant/property/order will appear. Subscriber messages are highlighted.
 
-### Multiple Clients
+### UI Details
 
-Open multiple browser tabs/windows with the same `shareId` to see real-time message synchronization.
+- **Environment** and **AppSync endpoint** are shown at the top. The endpoint is the one used for the current mode and can be copied (input + Copy button).
+- **Parameters** are shown with labels, one per line. Owner mode shows shareId and constructionID only; client-owner shows tenantID, propertyID, orderID.
+- **Message log**: Messages from the backend Subscriber are visually distinct (e.g. yellow background and “SENT BY Subscriber Service (Backend)”).
 
-The tests verify:
+## Authorization
 
-- Owner mode: Publishing and receiving messages
-- Client-owner mode: Auto-generation of shareId and message delivery
+| Mode         | Auth type   | Source                                                                 |
+|-------------|-------------|------------------------------------------------------------------------|
+| Owner       | Bearer      | `REACT_APP_AUTH_TOKEN` (sent as `Bearer <token>`)                       |
+| Client-owner| Cookie      | `REACT_APP_AUTH_COOKIE` if set, otherwise `document.cookie` in browser |
 
-## Key Implementation Details
+The Lambda authorizer receives the same value in `authorizationToken` for both HTTP and WebSocket (subscriptions).
 
-### Lambda Authorization
+## Subscription API (reference)
 
-Both mutations and subscriptions require a token:
+- **Owner**: `onMessage(shareID: String!, constructionID: String)`  
+  Returns: `id`, `eventSource`, `shareID`, `constructionID`.
 
-```javascript
-const client = generateClient({
-  authMode: "custom",
-  authToken: getAuthToken(), // Your authorization token
-});
-```
+- **Client-owner**: `onMessage(tenantID: Int!, propertyID: Int!, orderID: Int!)`  
+  Returns: `id`, `eventSource`, `tenantID`, `propertyID`, `orderID`.
 
-The token is sent in the `Authorization` header and passed to the Lambda authorizer as `authorizationToken`.
-
-### Subscription Filtering
-
-AppSync automatically filters subscriptions by `shareId`. When you subscribe to `onMessage(shareId: "room-1")`, you only receive messages where `publishMessage` returns a Message with `shareId: "room-1"`.
-
-### Message Structure
-
-All messages return a complete `Message` object:
-
-```typescript
-{
-  id: string              // Auto-generated UUID
-  content: string         // Message content
-  sender: string          // Sender identifier
-  shareId: string         // Share/room identifier (required)
-  createdAt: string       // ISO 8601 timestamp
-  tenantID?: number       // Optional (client-owner mode)
-  propertyID?: number     // Optional (client-owner mode)
-  orderID?: number        // Optional (client-owner mode)
-  constructionID?: string // Optional (owner mode)
-}
-```
+Messages are published by your backend Subscriber; this app only subscribes and displays them.
 
 ## Troubleshooting
 
-### Connection Issues
+### Connection / subscription issues
 
-- Verify `REACT_APP_APPSYNC_ENDPOINT` is set correctly
-- Check that the Lambda authorizer accepts your token
-- Ensure WebSocket connections are not blocked by firewall/proxy
+- Confirm the correct **AppSync endpoint** for the selected mode (see copyable endpoint on the page).
+- Ensure the Lambda authorizer accepts your token (owner: Bearer) or cookie (client-owner).
+- Check the browser console for subscription or auth errors.
+- If using cookie from the shell, set `REACT_APP_AUTH_COOKIE` with **single quotes** so `$` in the cookie is not expanded.
 
-### Messages Not Received
+### No messages
 
-- Verify subscription `shareId` matches the published message's `shareId`
-- Check browser console for subscription errors
-- Ensure the subscription is active before publishing
+- Verify the backend Subscriber is publishing to the same shareID/constructionID (owner) or tenantID/propertyID/orderID (client-owner).
+- Ensure the subscription is active (no errors in console) before the Subscriber sends.
 
-### Authorization Errors
+### Authorization errors
 
-- Verify `REACT_APP_AUTH_TOKEN` is set and valid
-- Check Lambda authorizer logs in CloudWatch
-- Ensure token format matches authorizer expectations
+- **Owner**: Check `REACT_APP_AUTH_TOKEN` and that the authorizer expects a Bearer token.
+- **Client-owner**: Check `REACT_APP_AUTH_COOKIE` or that the browser has the expected cookies; ensure the authorizer validates the cookie.
 
 ## References
 
-- [AWS AppSync Documentation](https://docs.aws.amazon.com/appsync/)
+- [AWS AppSync](https://docs.aws.amazon.com/appsync/)
 - [AWS Amplify GraphQL API](https://docs.amplify.aws/react/build-a-backend/graphql-api/)
 - [GraphQL Subscriptions](https://graphql.org/learn/queries/#subscriptions)
