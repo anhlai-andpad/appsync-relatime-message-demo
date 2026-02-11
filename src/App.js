@@ -12,9 +12,9 @@ export default function App() {
   const [constructionID, setConstructionID] = useState('c7f4af4f-c76d-4854-a018-849d5385bb72')
 
   // client-owner parameters
-  const [tenantID, setTenantID] = useState(1)
-  const [propertyID, setPropertyID] = useState(1)
-  const [orderID, setOrderID] = useState(1)
+  const [tenantID, setTenantID] = useState(123459)
+  const [propertyID, setPropertyID] = useState(147568)
+  const [orderID, setOrderID] = useState(756766)
 
   useEffect(() => {
     if (mode === 'owner') {
@@ -103,11 +103,29 @@ export default function App() {
       }}
     >
       <h2 style={{ textAlign: 'center' }}>Demo Realtime Message with AWS AppSync</h2>
-      <div style={{ textAlign: 'center', fontSize: 12, color: '#666', marginBottom: 8 }}>
+      <div style={{ textAlign: 'center', fontSize: 12, color: '#666', marginBottom: 4 }}>
         Environment: <strong>{process.env.REACT_APP_ENV ?? 'unknown'}</strong>
       </div>
-      <div style={{ textAlign: 'center', fontSize: 12, color: '#666', marginBottom: 16 }}>
-        Listening for messages published by the Subscriber on shareId: <strong>{shareId || 'not set'}</strong>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: '#666' }}>AppSync endpoint:</span>
+        <input
+          type="text"
+          readOnly
+          value={mode === 'client-owner' ? (process.env.REACT_APP_CLIENT_OWNER_APPSYNC_ENDPOINT || process.env.REACT_APP_OWNER_APPSYNC_ENDPOINT) || '' : (process.env.REACT_APP_OWNER_APPSYNC_ENDPOINT || '')}
+          placeholder="not set"
+          style={{ fontSize: 12, padding: '4px 8px', minWidth: 280, maxWidth: 420, border: '1px solid #ccc', borderRadius: 4, background: '#fafafa' }}
+          onClick={e => e.target.select()}
+        />
+        <button
+          type="button"
+          onClick={() => {
+            const url = mode === 'client-owner' ? (process.env.REACT_APP_CLIENT_OWNER_APPSYNC_ENDPOINT || process.env.REACT_APP_OWNER_APPSYNC_ENDPOINT) : process.env.REACT_APP_OWNER_APPSYNC_ENDPOINT
+            if (url) navigator.clipboard?.writeText(url).then(() => alert('Copied to clipboard'))
+          }}
+          style={{ fontSize: 12, padding: '4px 10px', cursor: 'pointer', borderRadius: 4, border: '1px solid #ccc', background: '#fff' }}
+        >
+          Copy
+        </button>
       </div>
 
       {/* Mode selector */}
@@ -142,47 +160,58 @@ export default function App() {
 
       {/* Parameters */}
       <div style={{ marginBottom: 16, padding: 12, background: '#f0f0f0', borderRadius: 8 }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-          <input
-            type="text"
-            placeholder="shareId"
-            value={shareId}
-            onChange={e => setShareId(e.target.value)}
-            disabled={mode === 'client-owner'}
-            style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc' }}
-          />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {mode === 'owner' && (
-            <input
-              type="text"
-              placeholder="constructionID (optional)"
-              value={constructionID}
-              onChange={e => setConstructionID(e.target.value)}
-              style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc' }}
-            />
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: '#333' }}>shareId</label>
+              <input
+                type="text"
+                value={shareId}
+                onChange={e => setShareId(e.target.value)}
+                style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc', width: 280, boxSizing: 'border-box' }}
+              />
+            </div>
+          )}
+          {mode === 'owner' && (
+            <div>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: '#333' }}>constructionID</label>
+              <input
+                type="text"
+                value={constructionID}
+                onChange={e => setConstructionID(e.target.value)}
+                style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc', width: 280, boxSizing: 'border-box' }}
+              />
+            </div>
           )}
           {mode === 'client-owner' && (
             <>
-              <input
-                type="number"
-                placeholder="tenantID"
-                value={tenantID}
-                onChange={e => setTenantID(parseInt(e.target.value) || 0)}
-                style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc', width: 100 }}
-              />
-              <input
-                type="number"
-                placeholder="propertyID"
-                value={propertyID}
-                onChange={e => setPropertyID(parseInt(e.target.value) || 0)}
-                style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc', width: 100 }}
-              />
-              <input
-                type="number"
-                placeholder="orderID"
-                value={orderID}
-                onChange={e => setOrderID(parseInt(e.target.value) || 0)}
-                style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc', width: 100 }}
-              />
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: '#333' }}>tenantID</label>
+                <input
+                  type="number"
+                  value={tenantID}
+                  onChange={e => setTenantID(parseInt(e.target.value) || 0)}
+                  style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc', width: 120, boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: '#333' }}>propertyID</label>
+                <input
+                  type="number"
+                  value={propertyID}
+                  onChange={e => setPropertyID(parseInt(e.target.value) || 0)}
+                  style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc', width: 120, boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: '#333' }}>orderID</label>
+                <input
+                  type="number"
+                  value={orderID}
+                  onChange={e => setOrderID(parseInt(e.target.value) || 0)}
+                  style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc', width: 120, boxSizing: 'border-box' }}
+                />
+              </div>
             </>
           )}
         </div>

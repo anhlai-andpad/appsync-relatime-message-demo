@@ -6,9 +6,15 @@ import { Amplify } from 'aws-amplify'
  * Lambda authorizer REQUIRES a token for BOTH:
  * - HTTP (mutations)
  * - WebSocket (subscriptions)
+ *
+ * Owner mode: Bearer token (REACT_APP_AUTH_TOKEN)
+ * Client-owner mode: Cookie (REACT_APP_AUTH_COOKIE or document.cookie)
  */
-function getAuthToken() {
-  return 'Bearer ' + process.env.REACT_APP_AUTH_TOKEN
+function getAuthToken(mode = 'owner') {
+  if (mode === 'client-owner') {
+    return process.env.REACT_APP_AUTH_COOKIE ?? (typeof document !== 'undefined' ? document.cookie : '')
+  }
+  return 'Bearer ' + (process.env.REACT_APP_AUTH_TOKEN ?? '')
 }
 
 /**
@@ -50,7 +56,7 @@ function getClient(mode = 'owner') {
 
     clientCache[mode] = generateClient({
       authMode: 'custom',
-      authToken: getAuthToken(),
+      authToken: getAuthToken(mode),
     })
 
     console.log(`📡 Created AppSync client for ${mode} mode`, { endpoint })
@@ -67,7 +73,6 @@ export const subscribeDoc = /* GraphQL */ `
   subscription OnMessage($shareID: String!, $constructionID: String) {
     onMessage(shareID: $shareID, constructionID: $constructionID) {
       id
-      body
       eventSource
       shareID
       constructionID
@@ -83,7 +88,6 @@ export const subscribeDocClientOwner = /* GraphQL */ `
   subscription OnMessage($tenantID: Int!, $propertyID: Int!, $orderID: Int!) {
     onMessage(tenantID: $tenantID, propertyID: $propertyID, orderID: $orderID) {
       id
-      body
       eventSource
       tenantID
       propertyID
@@ -140,7 +144,7 @@ export function subscribe(shareIDOrTenantID, next, error = null, constructionIDO
       query,
       variables,
       authMode: 'lambda',
-      authToken: getAuthToken(),
+      authToken: getAuthToken(mode),
     })
     .subscribe({
       next: event => {
